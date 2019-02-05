@@ -294,15 +294,16 @@ func (instance *Instance) Schemas(onlyNames ...string) ([]*Schema, error) {
 
 	schemas := make([]*Schema, len(rawSchemas))
 	for n, rawSchema := range rawSchemas {
-		tables, err := instance.querySchemaTables(rawSchema.Name)
-		if err != nil {
-			return nil, err
-		}
 		schemas[n] = &Schema{
 			Name:      rawSchema.Name,
 			CharSet:   rawSchema.CharSet,
 			Collation: rawSchema.Collation,
-			Tables:    tables,
+		}
+		if schemas[n].Tables, err = instance.querySchemaTables(rawSchema.Name); err != nil {
+			return nil, err
+		}
+		if schemas[n].Routines, err = instance.querySchemaRoutines(rawSchema.Name); err != nil {
+			return nil, err
 		}
 	}
 	return schemas, nil
@@ -997,4 +998,50 @@ func fixIndexOrder(t *Table) {
 		t.SecondaryIndexes[cur] = byName[matches[1]]
 		cur++
 	}
+}
+
+func (instance *Instance) querySchemaRoutines(schema string) ([]*Routine, error) {
+	db, err := instance.Connect("information_schema", "")
+	if err != nil {
+		return nil, err
+	}
+
+	// Note on these queries: MySQL 8.0 changes information_schema column names to
+	// come back from queries in all caps, so we need to explicitly use AS clauses
+	// in order to get them back as lowercase and have sqlx Select() work
+
+	// Obtain the routines in the schema
+	var rawRoutines []struct {
+		Name              string         `db:"routine_name"`
+		Type              string         `db:"routine_type"`
+		Body              sql.NullString `db:"routine_definition"`
+		IsDeterministic   string         `db:"is_deterministic"`
+		SQLDataAccess     string         `db:"sql_data_access"`
+		SecurityType      string         `db:"security_type"`
+		SQLMode           string         `db:"sql_mode"`
+		Comment           string         `db:"routine_comment"`
+		Definer           string         `db:"definer"`
+		DatabaseCollation string         `db:"database_collation"`
+	}
+	query := `
+		SELECT r.routine_name AS routine_name, UPPER(r.routine_type) AS routine_type,
+		       r.routine_definition AS routine_definition,
+		       UPPER(r.is_deterministic) AS is_deterministic,
+		       UPPER(r.sql_data_access) AS sql_data_access,
+		       UPPER(r.security_type) AS security_type,
+		       r.sql_mode AS sql_mode, r.comment AS comment, r.definer AS definer,
+		       r.database_collation AS database_collation
+		FROM   routines r
+		WHERE  r.routine_schema = ?`
+
+	if err := db.Select(&rawRoutines, query, schema); err != nil {
+		return nil, fmt.Errorf("Error querying information_schema.routines for schema %s: %s", schema, err)
+	}
+	if len(rawRoutines) == 0 {
+		return []*Routine{}, nil
+	}
+	routines := make([]*Routine, len(rawRoutines))
+
+	// TODO
+	return routines, nil
 }
