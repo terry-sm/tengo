@@ -14,11 +14,17 @@ const (
 	RoutineTypeFunc RoutineType = "function"
 )
 
+// Caps returns the routine type as an all-caps string, e.g. "PROCEDURE" or
+// "FUNCTION".
+func (r RoutineType) Caps() string {
+	return strings.ToUpper(string(r))
+}
+
 // Routine represents a stored procedure or function.
 type Routine struct {
 	Name              string
 	Type              RoutineType
-	Body              string
+	Body              string // From information_schema; different char escaping vs CreateStatement
 	ParamString       string // Formatted as per original CREATE
 	ReturnDataType    string // Includes charset/collation when relevant
 	Definer           string
@@ -28,6 +34,7 @@ type Routine struct {
 	SQLDataAccess     string
 	SecurityType      string
 	SQLMode           string // sql_mode in effect at creation time
+	CreateStatement   string // complete SHOW CREATE obtained from an instance
 }
 
 // Definition generates and returns a CREATE PROCEDURE or CREATE FUNCTION
@@ -59,7 +66,7 @@ func (r *Routine) Definition(_ Flavor) string {
 	characteristics = strings.Join(clauses, "")
 
 	return fmt.Sprintf("CREATE %s DEFINER=%s %s(%s)%s\n%s%s",
-		strings.ToUpper(string(r.Type)),
+		r.Type.Caps(),
 		definer,
 		EscapeIdentifier(r.Name),
 		r.ParamString,
