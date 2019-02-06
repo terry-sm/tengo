@@ -51,23 +51,23 @@ func (r *Routine) Definition(_ Flavor) string {
 	}
 
 	clauses := make([]string, 0)
-	if r.Comment != "" {
-		clauses = append(clauses, fmt.Sprintf("    COMMENT '%s'\n", EscapeValueForCreateTable(r.Comment)))
+	if r.SQLDataAccess != "CONTAINS SQL" {
+		clauses = append(clauses, fmt.Sprintf("    %s\n", r.SQLDataAccess))
 	}
 	if r.Deterministic {
 		clauses = append(clauses, "    DETERMINISTIC\n")
 	}
-	if r.SQLDataAccess != "CONTAINS SQL" {
-		clauses = append(clauses, fmt.Sprintf("    %s\n", r.SQLDataAccess))
-	}
 	if r.SecurityType != "DEFINER" {
 		clauses = append(clauses, fmt.Sprintf("    SQL SECURITY %s\n", r.SecurityType))
 	}
+	if r.Comment != "" {
+		clauses = append(clauses, fmt.Sprintf("    COMMENT '%s'\n", EscapeValueForCreateTable(r.Comment)))
+	}
 	characteristics = strings.Join(clauses, "")
 
-	return fmt.Sprintf("CREATE %s DEFINER=%s %s(%s)%s\n%s%s",
-		r.Type.Caps(),
+	return fmt.Sprintf("CREATE DEFINER=%s %s %s(%s)%s\n%s%s",
 		definer,
+		r.Type.Caps(),
 		EscapeIdentifier(r.Name),
 		r.ParamString,
 		returnClause,

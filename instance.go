@@ -1097,7 +1097,7 @@ func showCreateRoutine(db *sqlx.DB, routine string, rType RoutineType) (create s
 			CreateStatement sql.NullString `db:"Create Procedure"`
 		}
 		err = db.Select(&createRows, query)
-		if err == nil && len(createRows) != 1 {
+		if (err == nil && len(createRows) != 1) || IsDatabaseError(err, mysqlerr.ER_SP_DOES_NOT_EXIST) {
 			err = sql.ErrNoRows
 		} else if err == nil {
 			create = createRows[0].CreateStatement.String
@@ -1107,7 +1107,7 @@ func showCreateRoutine(db *sqlx.DB, routine string, rType RoutineType) (create s
 			CreateStatement sql.NullString `db:"Create Function"`
 		}
 		err = db.Select(&createRows, query)
-		if err == nil && len(createRows) != 1 {
+		if (err == nil && len(createRows) != 1) || IsDatabaseError(err, mysqlerr.ER_SP_DOES_NOT_EXIST) {
 			err = sql.ErrNoRows
 		} else if err == nil {
 			create = createRows[0].CreateStatement.String

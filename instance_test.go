@@ -548,6 +548,60 @@ func (s TengoIntegrationSuite) TestInstanceSchemaIntrospection(t *testing.T) {
 	}
 }
 
+func (s TengoIntegrationSuite) TestInstanceRoutineIntrospection(t *testing.T) {
+	schema := s.GetSchema(t, "testing")
+	db, err := s.d.Connect("testing", "")
+	if err != nil {
+		t.Fatalf("Unexpected error from Connect: %s", err)
+	}
+	var sqlMode string
+	if err = db.QueryRow("SELECT @@sql_mode").Scan(&sqlMode); err != nil {
+		t.Fatalf("Unexpected error from Scan: %s", err)
+	}
+
+	procsByName := schema.ProceduresByName()
+	actualProc1 := procsByName["proc1"]
+	if actualProc1 == nil || len(procsByName) != 1 {
+		t.Fatal("Unexpected result from ProceduresByName()")
+	}
+	expectProc1 := aProc(schema.Collation, sqlMode)
+	if !expectProc1.Equals(actualProc1) {
+		t.Errorf("Actual proc did not equal expected.\nACTUAL: %+v\nEXPECTED: %+v\n", actualProc1, &expectProc1)
+	}
+
+	funcsByName := schema.FunctionsByName()
+	actualFunc1 := funcsByName["func1"]
+	if actualFunc1 == nil || len(funcsByName) != 1 {
+		t.Fatal("Unexpected result from FunctionsByName()")
+	}
+	expectFunc1 := aFunc(schema.Collation, sqlMode)
+	if !expectFunc1.Equals(actualFunc1) {
+		t.Errorf("Actual func did not equal expected.\nACTUAL: %+v\nEXPECTED: %+v\n", actualFunc1, &expectFunc1)
+	}
+	if actualFunc1.Equals(actualProc1) {
+		t.Error("Equals not behaving as expected, proc1 and func1 should not be equal")
+	}
+
+	// Coverage for various nil cases and error conditions
+	schema = nil
+	if procCount := len(schema.ProceduresByName()); procCount != 0 {
+		t.Errorf("nil schema unexpectedly contains %d procedures by name", procCount)
+	}
+	var r *Routine
+	if actualFunc1.Equals(r) || !r.Equals(r) {
+		t.Error("Equals not behaving as expected")
+	}
+	if _, err = showCreateRoutine(db, actualProc1.Name, RoutineTypeFunc); err != sql.ErrNoRows {
+		t.Errorf("Unexpected error return from showCreateRoutine: expected sql.ErrNoRows, found %s", err)
+	}
+	if _, err = showCreateRoutine(db, actualFunc1.Name, RoutineTypeProc); err != sql.ErrNoRows {
+		t.Errorf("Unexpected error return from showCreateRoutine: expected sql.ErrNoRows, found %s", err)
+	}
+	if _, err = showCreateRoutine(db, actualFunc1.Name, RoutineType("invalid")); err == nil {
+		t.Error("Expected non-nil error return from showCreateRoutine with invalid type, instead found nil")
+	}
+}
+
 func (s TengoIntegrationSuite) TestInstanceStrictModeCompliant(t *testing.T) {
 	assertCompliance := func(expected bool) {
 		t.Helper()
