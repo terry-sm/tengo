@@ -25,6 +25,11 @@ func TestSchemaDiffEmpty(t *testing.T) {
 	s1 := aSchema("s1", &s1t1, &s1t2)
 	s2 := aSchema("s2", &s2t1, &s2t2)
 
+	s1r1 := aProc("latin1_swedish_ci", "")
+	s2r1 := aProc("latin1_swedish_ci", "")
+	s1.Routines = append(s1.Routines, &s1r1)
+	s2.Routines = append(s2.Routines, &s2r1)
+
 	assertEmptyDiff(&s1, &s2)
 	assertEmptyDiff(&s2, &s1)
 	assertEmptyDiff(nil, nil)
@@ -404,6 +409,94 @@ func TestSchemaDiffForeignKeys(t *testing.T) {
 	}
 }
 
+func TestSchemaDiffRoutines(t *testing.T) {
+	s1 := aSchema("s1")
+	s2 := aSchema("s2")
+	s1r1 := aFunc("latin1_swedish_ci", "")
+	s2r1 := aFunc("latin1_swedish_ci", "")
+	s2r2 := aProc("latin1_swedish_ci", "")
+	s1.Routines = append(s1.Routines, &s1r1)
+	s2.Routines = append(s2.Routines, &s2r1, &s2r2)
+
+	// Test create
+	sd := NewSchemaDiff(&s1, &s2)
+	if len(sd.RoutineDiffs) != 1 {
+		t.Fatalf("Incorrect number of routine diffs: expected 1, found %d", len(sd.RoutineDiffs))
+	}
+	rd := sd.RoutineDiffs[0]
+	if rd.DiffType() != DiffTypeCreate {
+		t.Fatalf("Incorrect type of diff returned: expected %s, found %s", DiffTypeCreate, rd.DiffType())
+	}
+	if stmt, err := rd.Statement(StatementModifiers{}); err != nil || !strings.HasPrefix(stmt, "CREATE") {
+		t.Errorf("Unexpected return value from Statement(): %s / %s", stmt, err)
+	}
+	if rd.To != &s2r2 || rd.ObjectName() != s2r2.Name || rd.ObjectType() != "procedure" {
+		t.Error("Pointer in diff does not point to expected value")
+	}
+
+	// Test drop (opposite diff direction of above)
+	sd = NewSchemaDiff(&s2, &s1)
+	if len(sd.RoutineDiffs) != 1 {
+		t.Fatalf("Incorrect number of routine diffs: expected 1, found %d", len(sd.RoutineDiffs))
+	}
+	rd = sd.RoutineDiffs[0]
+	if rd.DiffType() != DiffTypeDrop {
+		t.Fatalf("Incorrect type of diff returned: expected %s, found %s", DiffTypeDrop, rd.DiffType())
+	}
+	if rd.From != &s2r2 || rd.ObjectName() != s2r2.Name || rd.ObjectType() != "procedure" {
+		t.Error("Pointer in diff does not point to expected value")
+	}
+	if sd.String() != fmt.Sprintf("DROP PROCEDURE %s;\n", EscapeIdentifier(s2r2.Name)) {
+		t.Errorf("SchemaDiff.String returned unexpected result: %s", sd)
+	}
+
+	// Test impact of statement modifiers (allowing/forbidding drop) on previous drop
+	if stmt, err := rd.Statement(StatementModifiers{AllowUnsafe: false}); !IsForbiddenDiff(err) {
+		t.Errorf("Modifier AllowUnsafe=false not working; expected forbidden diff error for %s, instead err=%v", stmt, err)
+	}
+	if stmt, err := rd.Statement(StatementModifiers{AllowUnsafe: true}); err != nil {
+		t.Errorf("Modifier AllowUnsafe=true not working; error (%s) returned for %s", err, stmt)
+	}
+
+	// Test alter, which currently always is handled by a drop and re-add
+	s1r2 := aProc("utf8mb4_general_ci", "")
+	s1.Routines = append(s1.Routines, &s1r2)
+	sd = NewSchemaDiff(&s2, &s1)
+	if len(sd.RoutineDiffs) != 2 {
+		t.Fatalf("Incorrect number of routine diffs: expected 2, found %d", len(sd.RoutineDiffs))
+	}
+	rd = sd.RoutineDiffs[0]
+	if rd.DiffType() != DiffTypeDrop {
+		t.Fatalf("Incorrect type of diff returned: expected %s, found %s", DiffTypeDrop, rd.DiffType())
+	}
+	if rd.From != &s2r2 || rd.ObjectName() != s2r2.Name {
+		t.Error("Pointer in diff does not point to expected value")
+	}
+	rd = sd.RoutineDiffs[1]
+	if rd.DiffType() != DiffTypeCreate {
+		t.Fatalf("Incorrect type of diff returned: expected %s, found %s", DiffTypeCreate, rd.DiffType())
+	}
+	if rd.To != &s1r2 || rd.ObjectName() != s1r2.Name {
+		t.Error("Pointer in diff does not point to expected value")
+	}
+
+	// Confirm that procs and funcs with same name are handled properly
+	s1r2 = aProc("latin1_swedish_ci", "")
+	s1.Routines = []*Routine{&s1r2}
+	s2r1.Name = s2r2.Name
+	sd = NewSchemaDiff(&s1, &s2)
+	if len(sd.RoutineDiffs) != 1 {
+		t.Fatalf("Incorrect number of routine diffs: expected 1, found %d", len(sd.RoutineDiffs))
+	}
+	rd = sd.RoutineDiffs[0]
+	if rd.DiffType() != DiffTypeCreate {
+		t.Fatalf("Incorrect type of diff returned: expected %s, found %s", DiffTypeCreate, rd.DiffType())
+	}
+	if rd.To != &s2r1 || rd.ObjectType() != "function" {
+		t.Error("Pointer in diff does not point to expected value")
+	}
+}
+
 func TestSchemaDiffFilteredTableDiffs(t *testing.T) {
 	s1t1 := anotherTable()
 	s1t2 := aTable(1)
@@ -657,7 +750,7 @@ func TestIgnoreTableMod(t *testing.T) {
 	assertStatement("^test", "testing", false)
 }
 
-func TestNilTableDiff(t *testing.T) {
+func TestNilObjectDiff(t *testing.T) {
 	var td *TableDiff
 	if td.ObjectType() != "table" {
 		t.Errorf("Unexpected object type: %s", td.ObjectType())
@@ -669,6 +762,20 @@ func TestNilTableDiff(t *testing.T) {
 		t.Errorf("Expected nil TableDiff to return empty TypeString; instead found %s", td.TypeString())
 	}
 	if stmt, err := td.Statement(StatementModifiers{}); stmt != "" || err != nil {
+		t.Errorf("Unexpected return from Statement: %s / %v", stmt, err)
+	}
+
+	var rd *RoutineDiff
+	if rd.ObjectType() == "procedure" || rd.ObjectType() == "function" {
+		t.Errorf("Unexpected object type: %s", rd.ObjectType())
+	}
+	if rd.ObjectName() != "" {
+		t.Errorf("Unexpected object name: %s", rd.ObjectName())
+	}
+	if rd.DiffType() != DiffTypeNone {
+		t.Errorf("Unexpected diff type: %s", rd.DiffType())
+	}
+	if stmt, err := rd.Statement(StatementModifiers{}); stmt != "" || err != nil {
 		t.Errorf("Unexpected return from Statement: %s / %v", stmt, err)
 	}
 }

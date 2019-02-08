@@ -90,3 +90,8 @@ func (r *Routine) Equals(other *Routine) bool {
 	// know neither is nil
 	return *r == *other
 }
+
+// DropStatement returns a SQL statement that, if run, would drop this routine.
+func (r *Routine) DropStatement() string {
+	return fmt.Sprintf("DROP %s %s", r.Type.Caps(), EscapeIdentifier(r.Name))
+}
