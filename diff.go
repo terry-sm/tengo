@@ -1,6 +1,3 @@
-// Package tengo (Go La Tengo) is a database automation library. In its current
-// form, its functionality is focused on MySQL schema introspection and
-// diff'ing. Future releases will add more general-purpose automation features.
 package tengo
 
 import (
@@ -42,7 +39,7 @@ func (dt DiffType) String() string {
 // two objects.
 type ObjectDiff interface {
 	DiffType() DiffType
-	ObjectType() string
+	ObjectType() ObjectType
 	ObjectName() string
 	Statement(StatementModifiers) (string, error)
 }
@@ -239,9 +236,9 @@ type DatabaseDiff struct {
 }
 
 // ObjectType returns the type of the object being diff'ed, which is always
-// "database" for a DatabaseDiff
-func (dd *DatabaseDiff) ObjectType() string {
-	return "database"
+// ObjectTypeDatabase for a DatabaseDiff
+func (dd *DatabaseDiff) ObjectType() ObjectType {
+	return ObjectTypeDatabase
 }
 
 // ObjectName returns the name of the object. This will be the From side schema,
@@ -306,9 +303,9 @@ type TableDiff struct {
 }
 
 // ObjectType returns the type of the object being diff'ed, which is always
-// "table" for a TableDiff
-func (td *TableDiff) ObjectType() string {
-	return "table"
+// ObjectTypeTable for a TableDiff
+func (td *TableDiff) ObjectType() ObjectType {
+	return ObjectTypeTable
 }
 
 // ObjectName returns the name of the object. This will be the From side table
@@ -562,14 +559,14 @@ type RoutineDiff struct {
 }
 
 // ObjectType returns the type of the object being diff'ed, which will be either
-// "function" or "procedure" for a RoutineDiff
-func (rd *RoutineDiff) ObjectType() string {
+// ObjectTypeFunc or ObjectTypeProc for a RoutineDiff
+func (rd *RoutineDiff) ObjectType() ObjectType {
 	if rd != nil && rd.From != nil {
-		return string(rd.From.Type)
+		return rd.From.Type
 	} else if rd != nil && rd.To != nil {
-		return string(rd.To.Type)
+		return rd.To.Type
 	}
-	return "routine"
+	return ObjectType("")
 }
 
 // ObjectName returns the name of the object being diff'ed.
@@ -645,7 +642,7 @@ func IsForbiddenDiff(err error) bool {
 // unable to transform the object due to use of unsupported features.
 type UnsupportedDiffError struct {
 	Name           string
-	ObjectType     string
+	ObjectType     ObjectType
 	ExpectedCreate string
 	ActualCreate   string
 }

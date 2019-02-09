@@ -474,7 +474,7 @@ func aSchema(name string, tables ...*Table) Schema {
 func aProc(dbCollation, sqlMode string) Routine {
 	r := Routine{
 		Name: "proc1",
-		Type: RoutineTypeProc,
+		Type: ObjectTypeProc,
 		Body: `BEGIN
   SELECT @iterations + 1, 98.76 INTO iterations, pct;
   END`,
@@ -495,7 +495,7 @@ func aProc(dbCollation, sqlMode string) Routine {
 func aFunc(dbCollation, sqlMode string) Routine {
 	r := Routine{
 		Name:              "func1",
-		Type:              RoutineTypeFunc,
+		Type:              ObjectTypeFunc,
 		Body:              "return mult * 2.0",
 		ParamString:       "mult float(10,2)",
 		ReturnDataType:    "float",

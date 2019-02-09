@@ -46,22 +46,22 @@ func (s *Schema) Table(name string) *Table {
 // ProceduresByName returns a mapping of stored procedure names to Routine
 // struct pointers, for all stored procedures in the schema.
 func (s *Schema) ProceduresByName() map[string]*Routine {
-	return s.routinesByNameAndType(RoutineTypeProc)
+	return s.routinesByNameAndType(ObjectTypeProc)
 }
 
 // FunctionsByName returns a mapping of function names to Routine struct
 // pointers, for all functions in the schema.
 func (s *Schema) FunctionsByName() map[string]*Routine {
-	return s.routinesByNameAndType(RoutineTypeFunc)
+	return s.routinesByNameAndType(ObjectTypeFunc)
 }
 
-func (s *Schema) routinesByNameAndType(rType RoutineType) map[string]*Routine {
+func (s *Schema) routinesByNameAndType(ot ObjectType) map[string]*Routine {
 	if s == nil {
 		return map[string]*Routine{}
 	}
 	result := make(map[string]*Routine, len(s.Routines))
 	for _, r := range s.Routines {
-		if r.Type == rType {
+		if r.Type == ot {
 			result[r.Name] = r
 		}
 	}

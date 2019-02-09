@@ -53,7 +53,7 @@ func TestSchemaDiffDatabaseDiff(t *testing.T) {
 		}
 		if expectedSchemaDDL != "" {
 			diffs := sd.ObjectDiffs()
-			if actualObjType := diffs[0].ObjectType(); actualObjType != "database" {
+			if actualObjType := diffs[0].ObjectType(); actualObjType != ObjectTypeDatabase {
 				t.Errorf("Unexpected object type for diff[0]: %s", actualObjType)
 			}
 			var expectName string
@@ -430,7 +430,7 @@ func TestSchemaDiffRoutines(t *testing.T) {
 	if stmt, err := rd.Statement(StatementModifiers{}); err != nil || !strings.HasPrefix(stmt, "CREATE") {
 		t.Errorf("Unexpected return value from Statement(): %s / %s", stmt, err)
 	}
-	if rd.To != &s2r2 || rd.ObjectName() != s2r2.Name || rd.ObjectType() != "procedure" {
+	if rd.To != &s2r2 || rd.ObjectName() != s2r2.Name || rd.ObjectType() != ObjectTypeProc {
 		t.Error("Pointer in diff does not point to expected value")
 	}
 
@@ -443,7 +443,7 @@ func TestSchemaDiffRoutines(t *testing.T) {
 	if rd.DiffType() != DiffTypeDrop {
 		t.Fatalf("Incorrect type of diff returned: expected %s, found %s", DiffTypeDrop, rd.DiffType())
 	}
-	if rd.From != &s2r2 || rd.ObjectName() != s2r2.Name || rd.ObjectType() != "procedure" {
+	if rd.From != &s2r2 || rd.ObjectName() != s2r2.Name || rd.ObjectType() != ObjectTypeProc {
 		t.Error("Pointer in diff does not point to expected value")
 	}
 	if sd.String() != fmt.Sprintf("DROP PROCEDURE %s;\n", EscapeIdentifier(s2r2.Name)) {
@@ -492,7 +492,7 @@ func TestSchemaDiffRoutines(t *testing.T) {
 	if rd.DiffType() != DiffTypeCreate {
 		t.Fatalf("Incorrect type of diff returned: expected %s, found %s", DiffTypeCreate, rd.DiffType())
 	}
-	if rd.To != &s2r1 || rd.ObjectType() != "function" {
+	if rd.To != &s2r1 || rd.ObjectType() != ObjectTypeFunc {
 		t.Error("Pointer in diff does not point to expected value")
 	}
 }
@@ -752,7 +752,7 @@ func TestIgnoreTableMod(t *testing.T) {
 
 func TestNilObjectDiff(t *testing.T) {
 	var td *TableDiff
-	if td.ObjectType() != "table" {
+	if td.ObjectType() != ObjectTypeTable {
 		t.Errorf("Unexpected object type: %s", td.ObjectType())
 	}
 	if td.ObjectName() != "" {
@@ -766,7 +766,7 @@ func TestNilObjectDiff(t *testing.T) {
 	}
 
 	var rd *RoutineDiff
-	if rd.ObjectType() == "procedure" || rd.ObjectType() == "function" {
+	if rd.ObjectType() == ObjectTypeProc || rd.ObjectType() == ObjectTypeFunc {
 		t.Errorf("Unexpected object type: %s", rd.ObjectType())
 	}
 	if rd.ObjectName() != "" {

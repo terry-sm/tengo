@@ -591,13 +591,13 @@ func (s TengoIntegrationSuite) TestInstanceRoutineIntrospection(t *testing.T) {
 	if actualFunc1.Equals(r) || !r.Equals(r) {
 		t.Error("Equals not behaving as expected")
 	}
-	if _, err = showCreateRoutine(db, actualProc1.Name, RoutineTypeFunc); err != sql.ErrNoRows {
+	if _, err = showCreateRoutine(db, actualProc1.Name, ObjectTypeFunc); err != sql.ErrNoRows {
 		t.Errorf("Unexpected error return from showCreateRoutine: expected sql.ErrNoRows, found %s", err)
 	}
-	if _, err = showCreateRoutine(db, actualFunc1.Name, RoutineTypeProc); err != sql.ErrNoRows {
+	if _, err = showCreateRoutine(db, actualFunc1.Name, ObjectTypeProc); err != sql.ErrNoRows {
 		t.Errorf("Unexpected error return from showCreateRoutine: expected sql.ErrNoRows, found %s", err)
 	}
-	if _, err = showCreateRoutine(db, actualFunc1.Name, RoutineType("invalid")); err == nil {
+	if _, err = showCreateRoutine(db, actualFunc1.Name, ObjectTypeTable); err == nil {
 		t.Error("Expected non-nil error return from showCreateRoutine with invalid type, instead found nil")
 	}
 }
