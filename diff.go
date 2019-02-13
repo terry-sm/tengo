@@ -39,8 +39,7 @@ func (dt DiffType) String() string {
 // two objects.
 type ObjectDiff interface {
 	DiffType() DiffType
-	ObjectType() ObjectType
-	ObjectName() string
+	ObjectKey() ObjectKey
 	Statement(StatementModifiers) (string, error)
 }
 
@@ -80,8 +79,6 @@ type SchemaDiff struct {
 	ToSchema     *Schema
 	TableDiffs   []*TableDiff   // a set of statements that, if run, would turn tables in FromSchema into ToSchema
 	RoutineDiffs []*RoutineDiff // " but for funcs and procs
-	SameTables   []*Table       // slice of tables that were identical between schemas
-	SameRoutines []*Routine     // " but for funcs and procs
 }
 
 // NewSchemaDiff computes the set of differences between two database schemas.
@@ -95,15 +92,15 @@ func NewSchemaDiff(from, to *Schema) *SchemaDiff {
 		return result
 	}
 
-	result.TableDiffs, result.SameTables = compareTables(from, to)
-	result.RoutineDiffs, result.SameRoutines = compareRoutines(from, to)
+	result.TableDiffs = compareTables(from, to)
+	result.RoutineDiffs = compareRoutines(from, to)
 	return result
 }
 
-func compareTables(from, to *Schema) (tableDiffs []*TableDiff, sameTables []*Table) {
+func compareTables(from, to *Schema) []*TableDiff {
+	var tableDiffs, addFKAlters []*TableDiff
 	fromByName := from.TablesByName()
 	toByName := to.TablesByName()
-	addFKAlters := make([]*TableDiff, 0)
 
 	for name, fromTable := range fromByName {
 		toTable, stillExists := toByName[name]
@@ -112,9 +109,7 @@ func compareTables(from, to *Schema) (tableDiffs []*TableDiff, sameTables []*Tab
 			continue
 		}
 		td := NewAlterTable(fromTable, toTable)
-		if td == nil { // tables are the same
-			sameTables = append(sameTables, toTable)
-		} else {
+		if td != nil {
 			otherAlter, addFKAlter := td.SplitAddForeignKeys()
 			if otherAlter != nil {
 				tableDiffs = append(tableDiffs, otherAlter)
@@ -135,25 +130,20 @@ func compareTables(from, to *Schema) (tableDiffs []*TableDiff, sameTables []*Tab
 	// diff. (This is not a comprehensive solution yet though, since FKs can refer
 	// to other schemas, and NewSchemaDiff only operates within one schema.)
 	tableDiffs = append(tableDiffs, addFKAlters...)
-	return
+	return tableDiffs
 }
 
-func compareRoutines(from, to *Schema) (routineDiffs []*RoutineDiff, sameRoutines []*Routine) {
-	// TODO: Currently this handles all changes to existing routines via DROP-then-
-	// ADD, but some metadata-only changes could use ALTER FUNCTION / ALTER
-	// PROCEDURE instead.
+func compareRoutines(from, to *Schema) (routineDiffs []*RoutineDiff) {
 	compare := func(fromByName map[string]*Routine, toByName map[string]*Routine) {
 		for name, fromRoutine := range fromByName {
 			toRoutine, stillExists := toByName[name]
-			if !stillExists || !fromRoutine.Equals(toRoutine) {
+			if !stillExists {
 				routineDiffs = append(routineDiffs, &RoutineDiff{From: fromRoutine})
-			}
-			if stillExists {
-				if fromRoutine.Equals(toRoutine) {
-					sameRoutines = append(sameRoutines, toRoutine)
-				} else {
-					routineDiffs = append(routineDiffs, &RoutineDiff{To: toRoutine})
-				}
+			} else if !fromRoutine.Equals(toRoutine) {
+				// TODO: Currently this handles all changes to existing routines via DROP-
+				// then-ADD, but some metadata-only changes could use ALTER FUNCTION / ALTER
+				// PROCEDURE instead.
+				routineDiffs = append(routineDiffs, &RoutineDiff{From: fromRoutine}, &RoutineDiff{To: toRoutine})
 			}
 		}
 		for name, toRoutine := range toByName {
@@ -235,22 +225,21 @@ type DatabaseDiff struct {
 	To   *Schema
 }
 
-// ObjectType returns the type of the object being diff'ed, which is always
-// ObjectTypeDatabase for a DatabaseDiff
-func (dd *DatabaseDiff) ObjectType() ObjectType {
-	return ObjectTypeDatabase
-}
-
-// ObjectName returns the name of the object. This will be the From side schema,
-// unless it is nil (CREATE DATABASE), in which case the To side database name
-// is returned.
-func (dd *DatabaseDiff) ObjectName() string {
+// ObjectKey returns a value representing the type and name of the schema being
+// diff'ed. The type is always ObjectTypeDatabase. The name will be the From
+// side schema, unless it is nil (CREATE DATABASE), in which case the To side
+// schema name is returned.
+func (dd *DatabaseDiff) ObjectKey() ObjectKey {
+	key := ObjectKey{Type: ObjectTypeDatabase}
 	if dd == nil || (dd.From == nil && dd.To == nil) {
-		return ""
-	} else if dd.From == nil {
-		return dd.To.Name
+		return key
 	}
-	return dd.From.Name
+	if dd.From == nil {
+		key.Name = dd.To.Name
+	} else {
+		key.Name = dd.From.Name
+	}
+	return key
 }
 
 // DiffType returns the type of diff operation.
@@ -302,23 +291,21 @@ type TableDiff struct {
 	supported    bool
 }
 
-// ObjectType returns the type of the object being diff'ed, which is always
-// ObjectTypeTable for a TableDiff
-func (td *TableDiff) ObjectType() ObjectType {
-	return ObjectTypeTable
-}
-
-// ObjectName returns the name of the object. This will be the From side table
-// name, unless the diffType is DiffTypeCreate, in which case it will be the To
-// side table name.
-func (td *TableDiff) ObjectName() string {
+// ObjectKey returns a value representing the type and name of the table being
+// diff'ed. The type is always ObjectTypeTable. The name will be the From side
+// table, unless the diffType is DiffTypeCreate, in which case the To side
+// table name is used.
+func (td *TableDiff) ObjectKey() ObjectKey {
+	key := ObjectKey{Type: ObjectTypeTable}
 	if td == nil {
-		return ""
+		return key
 	}
 	if td.Type == DiffTypeCreate {
-		return td.To.Name
+		key.Name = td.To.Name
+	} else {
+		key.Name = td.From.Name
 	}
-	return td.From.Name
+	return key
 }
 
 // DiffType returns the type of diff operation.
@@ -365,11 +352,6 @@ func NewDropTable(table *Table) *TableDiff {
 		From:      table,
 		supported: true,
 	}
-}
-
-// TypeString returns the type of table diff as a string.
-func (td *TableDiff) TypeString() string {
-	return td.DiffType().String()
 }
 
 // SplitAddForeignKeys looks through a TableDiff's alterClauses and pulls out
@@ -487,22 +469,19 @@ func (td *TableDiff) alterStatement(mods StatementModifiers) (string, error) {
 	if !td.supported {
 		if td.To.UnsupportedDDL {
 			return "", &UnsupportedDiffError{
-				Name:           td.To.Name,
-				ObjectType:     td.ObjectType(),
+				ObjectKey:      td.ObjectKey(),
 				ExpectedCreate: td.To.GeneratedCreateStatement(mods.Flavor),
 				ActualCreate:   td.To.CreateStatement,
 			}
 		} else if td.From.UnsupportedDDL {
 			return "", &UnsupportedDiffError{
-				Name:           td.From.Name,
-				ObjectType:     td.ObjectType(),
+				ObjectKey:      td.ObjectKey(),
 				ExpectedCreate: td.From.GeneratedCreateStatement(mods.Flavor),
 				ActualCreate:   td.From.CreateStatement,
 			}
 		} else {
 			return "", &UnsupportedDiffError{
-				Name:           td.From.Name,
-				ObjectType:     td.ObjectType(),
+				ObjectKey:      td.ObjectKey(),
 				ExpectedCreate: td.From.CreateStatement,
 				ActualCreate:   td.To.CreateStatement,
 			}
@@ -558,25 +537,17 @@ type RoutineDiff struct {
 	To   *Routine
 }
 
-// ObjectType returns the type of the object being diff'ed, which will be either
-// ObjectTypeFunc or ObjectTypeProc for a RoutineDiff
-func (rd *RoutineDiff) ObjectType() ObjectType {
+// ObjectKey returns a value representing the type and name of the routine being
+// diff'ed. The type will be either ObjectTypeFunc or ObjectTypeProc. The name
+// will be the From side routine, unless this is a Create, in which case the To
+// side routine name is used.
+func (rd *RoutineDiff) ObjectKey() ObjectKey {
 	if rd != nil && rd.From != nil {
-		return rd.From.Type
+		return ObjectKey{Type: rd.From.Type, Name: rd.From.Name}
 	} else if rd != nil && rd.To != nil {
-		return rd.To.Type
+		return ObjectKey{Type: rd.To.Type, Name: rd.To.Name}
 	}
-	return ObjectType("")
-}
-
-// ObjectName returns the name of the object being diff'ed.
-func (rd *RoutineDiff) ObjectName() string {
-	if rd != nil && rd.From != nil {
-		return rd.From.Name
-	} else if rd != nil && rd.To != nil {
-		return rd.To.Name
-	}
-	return ""
+	return ObjectKey{}
 }
 
 // DiffType returns the type of diff operation.
@@ -641,15 +612,14 @@ func IsForbiddenDiff(err error) bool {
 // UnsupportedDiffError can be returned by ObjectDiff.Statement if Tengo is
 // unable to transform the object due to use of unsupported features.
 type UnsupportedDiffError struct {
-	Name           string
-	ObjectType     ObjectType
+	ObjectKey      ObjectKey
 	ExpectedCreate string
 	ActualCreate   string
 }
 
 // Error satisfies the builtin error interface.
 func (e *UnsupportedDiffError) Error() string {
-	return fmt.Sprintf("%s %s uses unsupported features and cannot be diff'ed", e.ObjectType, e.Name)
+	return fmt.Sprintf("%s uses unsupported features and cannot be diff'ed", e.ObjectKey)
 }
 
 // ExtendedError returns a string with more information about why the diff is

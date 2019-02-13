@@ -530,6 +530,25 @@ func (s TengoIntegrationSuite) TestInstanceSchemaIntrospection(t *testing.T) {
 		}
 	}
 
+	// Test ObjectDefinitions map, which should contain objects of multiple types
+	dict := schema.ObjectDefinitions()
+	for key, create := range dict {
+		var ok bool
+		switch key.Type {
+		case ObjectTypeTable:
+			ok = strings.HasPrefix(create, "CREATE TABLE")
+		case ObjectTypeProc, ObjectTypeFunc:
+			ok = strings.HasPrefix(create, "CREATE DEFINER")
+		}
+		if !ok {
+			t.Errorf("Unexpected or incorrect key %s found in schema object definitions --> %s", key, create)
+		}
+	}
+
+	if dict[ObjectKey{Type: ObjectTypeFunc, Name: "func1"}] == "" || dict[ObjectKey{Type: ObjectTypeProc, Name: "func1"}] != "" {
+		t.Error("ObjectDefinitions map not populated as expected")
+	}
+
 	// ensure character set handling works properly regardless of whether this
 	// flavor has a data dictionary, which changed many SHOW CREATE TABLE behaviors
 	schema = s.GetSchema(t, "testcharcoll")
@@ -546,6 +565,7 @@ func (s TengoIntegrationSuite) TestInstanceSchemaIntrospection(t *testing.T) {
 	if aTableFromDB.GeneratedCreateStatement(flavor) != aTableFromDB.CreateStatement && !aTableFromDB.UnsupportedDDL {
 		t.Error("fixIndexOrder did not behave as expected")
 	}
+
 }
 
 func (s TengoIntegrationSuite) TestInstanceRoutineIntrospection(t *testing.T) {

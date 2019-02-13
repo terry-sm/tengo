@@ -68,6 +68,27 @@ func (s *Schema) routinesByNameAndType(ot ObjectType) map[string]*Routine {
 	return result
 }
 
+// ObjectDefinitions returns a mapping of ObjectKey (type+name) to an SQL string
+// containing the corresponding CREATE statement, for all supported object types
+// in the schema.
+// Note that the returned map does NOT include an entry for the schema itself.
+func (s *Schema) ObjectDefinitions() map[ObjectKey]string {
+	dict := make(map[ObjectKey]string)
+	for name, table := range s.TablesByName() {
+		key := ObjectKey{Type: ObjectTypeTable, Name: name}
+		dict[key] = table.CreateStatement
+	}
+	for name, procedure := range s.ProceduresByName() {
+		key := ObjectKey{Type: ObjectTypeProc, Name: name}
+		dict[key] = procedure.CreateStatement
+	}
+	for name, function := range s.FunctionsByName() {
+		key := ObjectKey{Type: ObjectTypeFunc, Name: name}
+		dict[key] = function.CreateStatement
+	}
+	return dict
+}
+
 // Diff returns the set of differences between this schema and another schema.
 func (s *Schema) Diff(other *Schema) *SchemaDiff {
 	return NewSchemaDiff(s, other)

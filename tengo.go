@@ -4,6 +4,7 @@
 package tengo
 
 import (
+	"fmt"
 	"strings"
 )
 
@@ -23,4 +24,15 @@ const (
 // Caps returns the object type as an uppercase string.
 func (ot ObjectType) Caps() string {
 	return strings.ToUpper(string(ot))
+}
+
+// ObjectKey is useful as a map key for indexing database objects within a
+// single schema.
+type ObjectKey struct {
+	Type ObjectType
+	Name string
+}
+
+func (key ObjectKey) String() string {
+	return fmt.Sprintf("%s %s", key.Type, EscapeIdentifier(key.Name))
 }
