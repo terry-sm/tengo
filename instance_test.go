@@ -591,7 +591,7 @@ func (s TengoIntegrationSuite) TestInstanceRoutineIntrospection(t *testing.T) {
 
 	funcsByName := schema.FunctionsByName()
 	actualFunc1 := funcsByName["func1"]
-	if actualFunc1 == nil || len(funcsByName) != 1 {
+	if actualFunc1 == nil || len(funcsByName) != 2 {
 		t.Fatal("Unexpected result from FunctionsByName()")
 	}
 	expectFunc1 := aFunc(schema.Collation, sqlMode)
@@ -600,6 +600,27 @@ func (s TengoIntegrationSuite) TestInstanceRoutineIntrospection(t *testing.T) {
 	}
 	if actualFunc1.Equals(actualProc1) {
 		t.Error("Equals not behaving as expected, proc1 and func1 should not be equal")
+	}
+
+	// If this flavor supports using mysql.proc to bulk-fetch routines, confirm
+	// the result is identical to using the individual SHOW CREATE queries
+	if !s.d.Flavor().HasDataDictionary() {
+		fastResults, err := s.d.querySchemaRoutines("testing")
+		if err != nil {
+			t.Fatalf("Unexpected error from querySchemaRoutines: %s", err)
+		}
+		oldFlavor := s.d.Flavor()
+		s.d.flavor = FlavorMySQL80 // hacky, but ok for testing...
+		slowResults, err := s.d.querySchemaRoutines("testing")
+		s.d.flavor = oldFlavor
+		if err != nil {
+			t.Fatalf("Unexpected error from querySchemaRoutines: %s", err)
+		}
+		for n, r := range fastResults {
+			if !r.Equals(slowResults[n]) {
+				t.Errorf("Routine[%d] mismatch\nFast path value: %+v\nSlow path value: %+v\n", n, r, slowResults[n])
+			}
+		}
 	}
 
 	// Coverage for various nil cases and error conditions
